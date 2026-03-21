@@ -226,6 +226,21 @@ class Updater {
 				}
 				$update['package'] = add_query_arg( $metadata_formatted, $data['download_url'] );
 			}
+
+			// Banners for the plugin update row and details popup.
+			if ( ! empty( $data['details']['banners'] ) ) {
+				$update['banners'] = $data['details']['banners'];
+			}
+
+			// Icons for the plugin update row.
+			if ( ! empty( $data['details']['icons'] ) ) {
+				$update['icons'] = $data['details']['icons'];
+			}
+
+			// Upgrade notice shown in the plugins list.
+			if ( ! empty( $data['details']['upgrade_notice'] ) ) {
+				$update['upgrade_notice'] = $data['details']['upgrade_notice'];
+			}
 		}
 
 		/**
