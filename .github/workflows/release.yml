@@ -1,0 +1,60 @@
+name: Release
+
+# Tags are plain SemVer ("1.4.0", "1.4.0-rc.1") — no "v" prefix — so Composer
+# / Packagist pick them up cleanly. The GitHub Release gets a display name
+# prefixed with "v" ("v1.4.0") for human readability; the tag itself stays
+# unprefixed.
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+-*'
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate version consistency
+        id: validate
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/}"
+          COMPOSER_VERSION=$(jq -r '.version // empty' composer.json)
+
+          echo "Tag version:         $TAG_VERSION"
+          echo "composer.json version: $COMPOSER_VERSION"
+
+          if [ -z "$COMPOSER_VERSION" ]; then
+            echo "::error::composer.json is missing a 'version' field"
+            exit 1
+          fi
+
+          if [ "$TAG_VERSION" != "$COMPOSER_VERSION" ]; then
+            echo "::error::Version mismatch: tag ($TAG_VERSION) != composer.json ($COMPOSER_VERSION)"
+            exit 1
+          fi
+
+          echo "✅ Tag and composer.json agree on $TAG_VERSION"
+
+          if [[ "$TAG_VERSION" =~ -(alpha|beta|rc|test) ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: v${{ github.ref_name }}
+          generate_release_notes: true
+          prerelease: ${{ steps.validate.outputs.is_prerelease == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
