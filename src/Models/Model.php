@@ -2,6 +2,8 @@
 
 namespace IdeoLogix\DigitalLicenseManagerUpdaterWP\Models;
 
+use IdeoLogix\DigitalLicenseManagerUpdaterWP\Enums\ReleaseChannel;
+
 class Model {
 
 	/**
@@ -143,6 +145,54 @@ class Model {
 	public function deleteActivationToken() {
 		$name = $this->getActivationTokenOptionName();
 		delete_site_option( $name );
+	}
+
+	/**
+	 * Returns the raw stored release channel for this install, or false when
+	 * no preference has been recorded. Callers that want the resolved channel
+	 * (honoring library default, whitelist, and the `dlm_updater_channel` filter)
+	 * should use Configuration::getChannel() instead.
+	 *
+	 * @return string|false
+	 */
+	public function getStoredChannel() {
+		$name = $this->getChannelOptionName();
+
+		return get_site_option( $name );
+	}
+
+	/**
+	 * @return string
+	 */
+	public function getChannelOptionName() {
+		$name = sprintf( '%s_channel_%s', $this->prefix, $this->id );
+
+		return apply_filters( 'dlm_updater_channel_option_name', $name, $this );
+	}
+
+	/**
+	 * Persist the channel preference. Invalid values are refused (the method
+	 * returns false) rather than silently coerced — the caller decides how to
+	 * surface the error.
+	 *
+	 * @param string $channel
+	 *
+	 * @return bool True on success, false on invalid input.
+	 */
+	public function setStoredChannel( $channel ) {
+		if ( ! ReleaseChannel::isValid( $channel ) ) {
+			return false;
+		}
+		update_site_option( $this->getChannelOptionName(), $channel );
+
+		return true;
+	}
+
+	/**
+	 * @return void
+	 */
+	public function deleteStoredChannel() {
+		delete_site_option( $this->getChannelOptionName() );
 	}
 
 	/**

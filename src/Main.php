@@ -3,6 +3,7 @@
 namespace IdeoLogix\DigitalLicenseManagerUpdaterWP;
 
 use IdeoLogix\DigitalLicenseManagerUpdaterWP\Core\Activator;
+use IdeoLogix\DigitalLicenseManagerUpdaterWP\Core\ChannelSelector;
 use IdeoLogix\DigitalLicenseManagerUpdaterWP\Core\Configuration;
 use IdeoLogix\DigitalLicenseManagerUpdaterWP\Core\Updater;
 
@@ -27,6 +28,12 @@ class Main {
 	protected $updater;
 
 	/**
+	 * The channel selector (release channel UI + persistence)
+	 * @var ChannelSelector
+	 */
+	protected $channelSelector;
+
+	/**
 	 * Constructor
 	 *
 	 * @param $args
@@ -35,9 +42,19 @@ class Main {
 	 * @throws \Exception
 	 */
 	public function __construct( $args, $config = array() ) {
-		$this->configuration = new Configuration( $args );
-		$this->activator     = new Activator( $this->configuration );
-		$this->updater       = new Updater( $this->configuration );
+		$this->configuration   = new Configuration( $args );
+		$this->activator       = new Activator( $this->configuration );
+		$this->updater         = new Updater( $this->configuration );
+		$this->channelSelector = new ChannelSelector( $this->configuration );
+
+		// Library-default AJAX hooks for the channel selector. Consumers that
+		// want their own nonce convention can register their own wrappers
+		// against $this->channelSelector->getStatus() / ->setChannel().
+		if ( function_exists( 'add_action' ) ) {
+			$prefix = $this->configuration->getPrefix();
+			add_action( 'wp_ajax_' . $prefix . '_updater_channel_get', array( $this->channelSelector, 'handleAjaxGet' ) );
+			add_action( 'wp_ajax_' . $prefix . '_updater_channel_set', array( $this->channelSelector, 'handleAjaxSet' ) );
+		}
 	}
 
 	/**
@@ -57,11 +74,40 @@ class Main {
 	}
 
 	/**
+	 * Returns the ChannelSelector instance
+	 * @return ChannelSelector
+	 */
+	public function getChannelSelector() {
+		return $this->channelSelector;
+	}
+
+	/**
 	 * Returns the configuration instance
 	 * @return Configuration
 	 */
 	public function getConfiguration() {
 		return $this->configuration;
+	}
+
+	/**
+	 * DX forwarder: resolved release channel for this install.
+	 * @return string
+	 */
+	public function getChannel() {
+		return $this->configuration->getChannel();
+	}
+
+	/**
+	 * DX forwarder: persist channel + clear cache. Returns false if invalid.
+	 *
+	 * @param string $channel
+	 *
+	 * @return bool
+	 */
+	public function setChannel( $channel ) {
+		$result = $this->channelSelector->setChannel( $channel );
+
+		return ! empty( $result['success'] );
 	}
 
 	/**

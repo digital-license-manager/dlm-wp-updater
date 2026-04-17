@@ -2,6 +2,7 @@
 
 namespace IdeoLogix\DigitalLicenseManagerUpdaterWP\Http;
 
+use IdeoLogix\DigitalLicenseManagerUpdaterWP\Enums\ReleaseChannel;
 use IdeoLogix\DigitalLicenseManagerUpdaterWP\Models\Model;
 
 class Client {
@@ -68,14 +69,20 @@ class Client {
 	}
 
 	/**
-	 * Returns the update cache key
+	 * Returns the update cache key.
 	 *
-	 * @param Model $entity
+	 * Keys are channel-scoped so switching channels never serves stale
+	 * cross-channel data.
+	 *
+	 * @param Model       $entity
+	 * @param string|null $channel Resolved channel; null coerces to stable.
 	 *
 	 * @return string
 	 */
-	public function getUpdateCacheKey( $entity ) {
-		return sprintf( '%s_update_%s_%s', $this->prefix, $entity->getId(), $entity->getVersion() );
+	public function getUpdateCacheKey( $entity, $channel = null ) {
+		$channel = ReleaseChannel::isValid( $channel ) ? $channel : ReleaseChannel::getDefault();
+
+		return sprintf( '%s_update_%s_%s_%s', $this->prefix, $entity->getId(), $entity->getVersion(), $channel );
 	}
 
 	/**
@@ -139,15 +146,16 @@ class Client {
 	/**
 	 * Returns uncached info about the entity from the remote software server.
 	 *
-	 * @param Model  $entity The plugin or theme object.
-	 * @param string $type   If 'wp', the default, then the returned response will include
-	 *                       additional WordPress data in the `details` array.
-	 * @param bool   $decode If true (the default), the decoded response is returned,
-	 *                       else the raw response is returned.
+	 * @param Model       $entity  The plugin or theme object.
+	 * @param string      $type    If 'wp', the default, then the returned response will include
+	 *                             additional WordPress data in the `details` array.
+	 * @param bool        $decode  If true (the default), the decoded response is returned,
+	 *                             else the raw response is returned.
+	 * @param string|null $channel Release channel to request. Null or invalid coerces to stable.
 	 *
 	 * @return array|Response|\WP_Error
 	 */
-	private function info( $entity, $type = 'wp', $decode = true ) {
+	private function info( $entity, $type = 'wp', $decode = true, $channel = null ) {
 		$softwareId      = $entity->getId();
 		$activationToken = $entity->getActivationToken();
 
@@ -155,6 +163,8 @@ class Client {
 		if ( ! empty( $activationToken ) ) {
 			$params['activation_token'] = $activationToken;
 		}
+		$params['channel'] = ReleaseChannel::isValid( $channel ) ? $channel : ReleaseChannel::getDefault();
+
 		$result = $this->_get( 'software/' . $softwareId, $params );
 
 		return $this->_result( $result, $decode );
@@ -193,11 +203,11 @@ class Client {
 	 *     @type string $version
 	 * }
 	 */
-	public function prepareInfo( $entity, $type = 'wp', $decode = true, $force = false ) {
+	public function prepareInfo( $entity, $type = 'wp', $decode = true, $force = false, $channel = null ) {
 
 		$cacheTTL  = $this->cacheTTL['info'] ?? 0;
-		$transient = $this->getUpdateCacheKey( $entity );
-		
+		$transient = $this->getUpdateCacheKey( $entity, $channel );
+
 		// Return an unexpired cached response.
 		if ( false === $force ) {
 			$responseData = get_transient( $transient );
@@ -205,9 +215,9 @@ class Client {
 				return $responseData;
 			}
 		}
-		
+
 		// Get a fresh response.
-		$response = $this->info( $entity, $type, $decode );
+		$response = $this->info( $entity, $type, $decode, $channel );
 
 		// If the response is an error, it should be cached only long enough to avoid
 		// additional requests during the lifetime of the current page request.
@@ -364,8 +374,12 @@ class Client {
 			$licenseCacheKey = $this->getLicenseCacheKey( $token );
 			delete_transient( $licenseCacheKey );
 		}
-		// Clear update cache
-		delete_transient( $this->getUpdateCacheKey( $entity ) );
+		// Clear update cache across every known channel — the cache key is
+		// channel-scoped (see getUpdateCacheKey), so a single delete would
+		// only wipe the current channel's bucket.
+		foreach ( ReleaseChannel::all() as $channel ) {
+			delete_transient( $this->getUpdateCacheKey( $entity, $channel ) );
+		}
 		// Force update check
 		delete_site_transient( 'update_plugins' );
 	}

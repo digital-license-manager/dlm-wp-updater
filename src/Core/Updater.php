@@ -108,10 +108,24 @@ class Updater {
 		$update = $this->check_update( $force_check );
 
 		// append
+		$basename = $this->configuration->getEntity()->getBasename();
 		if ( is_array( $update ) && isset( $update['new_version'] ) ) {
-			$transient->response[ $this->configuration->getEntity()->getBasename() ] = $update;
+			$transient->response[ $basename ] = $update;
 		} else if ( is_object( $update ) && isset( $update->new_version ) ) {
-			$transient->response[ $this->configuration->getEntity()->getBasename() ] = $update;
+			$transient->response[ $basename ] = $update;
+		} else {
+			// No update available — clear any stale entry and mark as up-to-date.
+			unset( $transient->response[ $basename ] );
+			if ( $this->is_plugin() ) {
+				$plugin_data = get_plugin_data( WP_PLUGIN_DIR . '/' . $basename );
+				$transient->no_update[ $basename ] = (object) array(
+					'slug'        => $this->configuration->getEntity()->getSlug(),
+					'plugin'      => $basename,
+					'new_version' => isset( $plugin_data['Version'] ) ? $plugin_data['Version'] : '',
+					'url'         => '',
+					'package'     => '',
+				);
+			}
 		}
 
 		// return
@@ -147,7 +161,13 @@ class Updater {
 		}
 
 		// query api
-		$response = $this->configuration->getClient()->prepareInfo( $this->configuration->getEntity(), 'wp' );
+		$response = $this->configuration->getClient()->prepareInfo(
+			$this->configuration->getEntity(),
+			'wp',
+			true,
+			false,
+			$this->configuration->getChannel()
+		);
 		if ( empty( $response ) ) {
 			return $result;
 		}
@@ -174,7 +194,13 @@ class Updater {
 	 */
 	private function check_update( $force = false ) {
 
-		$update = $this->configuration->getClient()->prepareInfo( $this->configuration->getEntity(), 'wp', true, $force );
+		$update = $this->configuration->getClient()->prepareInfo(
+			$this->configuration->getEntity(),
+			'wp',
+			true,
+			$force,
+			$this->configuration->getChannel()
+		);
 
 		if ( ! empty( $update ) && is_array( $update ) ) {
 			$update = $this->format_update_object( $update );
