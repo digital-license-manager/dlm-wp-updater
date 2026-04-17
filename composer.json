@@ -1,7 +1,7 @@
 {
   "name": "ideologix/dlm-wp-updater",
   "description": "PHP WordPress updater for your plugins and themes that utilizes the Digital License Manager PRO REST APIs",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "type": "library",
   "license": "GPL-2.0-or-later",
   "authors": [
